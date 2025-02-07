@@ -1,10 +1,11 @@
 import sqlalchemy as sa 
 from sqlalchemy.orm import Mapped, mapped_column, sessionmaker, declarative_base
 from prettytable import PrettyTable
+from collections import deque
 
-db = sa.create_engine("sqlite:///:memory:")  # creating the database engine This creates an SQLite database in memory.
-sessionFactory = sessionmaker(bind=db)  # creates a session using the session maker function that binds the database engine (db) to the session
-Base = declarative_base()  # creates a base class used to define tables
+db = sa.create_engine("sqlite:///:memory:")
+sessionFactory = sessionmaker(bind=db)
+Base = declarative_base()
 
 class Products(Base):
     __tablename__ = "Products"
@@ -63,7 +64,13 @@ class OrderedProductQuantity(Base):
 
 Base.metadata.create_all(db)
 
-# PrettyTable section restored
+# Hash Table for Product Lookup
+product_lookup = {}
+
+# Order Queue
+order_queue = deque()
+
+# PrettyTable section
 order_details_table = PrettyTable()
 order_details_table.field_names = ["Order ID", "Date", "Customer Name", "Customer Email", "Customer Phone", "Shipping Address", "Billing Address"]
 
@@ -76,7 +83,6 @@ order_status_table.field_names = ["Order ID", "Payment Status", "Order Status", 
 refund_table = PrettyTable()
 refund_table.field_names = ["Order ID", "Return Requested", "Return Approved", "Refund Processed", "Reason for Return"]
 
-# Function to get user input and populate tables
 def get_user_input():
     with sessionFactory() as db_session:
         orderID = input("Enter Order ID: ")
@@ -87,49 +93,48 @@ def get_user_input():
         shippingAddress = input("Enter Shipping Address: ")
         billingAddress = input("Enter Billing Address: ")
         
-        # Creating a new customer
         new_customer = Customers(
-            firstName=customerName.split()[0],  # Assuming first name is the first part
-            lastName=customerName.split()[1] if len(customerName.split()) > 1 else "",  # Assuming last name is the second part
+            firstName=customerName.split()[0],
+            lastName=customerName.split()[1] if len(customerName.split()) > 1 else "",
             email=customerEmail,
             phone=customerPhone,
             address=shippingAddress,
-            city="N/A",  # Replace with actual logic to collect city and other address details
-            county="N/A",  # Replace with actual logic for county
-            postalCode="N/A",  # Replace with actual logic for postal code
+            city="N/A",
+            county="N/A",
+            postalCode="N/A",
             dateRegistered=orderDate
         )
         db_session.add(new_customer)
-        db_session.commit()  # Committing customer data
-
+        db_session.commit()
+        
         order_details_table.add_row([
             orderID, orderDate, customerName, customerEmail, customerPhone, shippingAddress, billingAddress
         ])
         
-        # Collecting product info
         productID = input("Enter Product ID: ")
         productName = input("Enter Product Name: ")
         quantityOrdered = int(input("Enter Quantity Ordered: "))
         unitPrice = float(input("Enter Unit Price: "))
         totalPrice = quantityOrdered * unitPrice
         
+        product_lookup[productID] = productName
+        order_queue.append(orderID)
+        
         product_details_table.add_row([
             orderID, productName, quantityOrdered, unitPrice, totalPrice
         ])
         
-        # Creating a new order
         new_order = Orders(
             orderID=orderID,
-            CustomerID=new_customer.customerID,  # Assuming we need to link the order to the customer
+            CustomerID=new_customer.customerID,
             OrderDate=orderDate,
             shippingAddress=shippingAddress,
             totalPrice=totalPrice,
-            orderStatus="Pending"  # Default status
+            orderStatus="Pending"
         )
         db_session.add(new_order)
-        db_session.commit()  # Committing order data
-
-        # Creating order item
+        db_session.commit()
+        
         new_order_item = OrderItems(
             orderID=orderID,
             productID=productID,
@@ -137,9 +142,8 @@ def get_user_input():
             unitPrice=unitPrice
         )
         db_session.add(new_order_item)
-        db_session.commit()  # Committing order item data
+        db_session.commit()
         
-        # Collecting order status
         paymentStatus = input("Enter Payment Status (Paid/Pending): ")
         orderStatus = input("Enter Order Status (Complete/Pending): ")
         shipmentDate = input("Enter Shipment Date: ")
@@ -150,7 +154,6 @@ def get_user_input():
             orderID, paymentStatus, orderStatus, shipmentDate, deliveryDate, notes
         ])
         
-        # Collecting return info
         returnRequested = input("Has a Return Been Requested? (Yes/No): ")
         returnApproved = input("Has the Return Been Approved? (Yes/No): ")
         refundProcessed = input("Has the Refund Been Processed? (Yes/No): ")
@@ -160,11 +163,10 @@ def get_user_input():
             orderID, returnRequested, returnApproved, refundProcessed, reasonForReturn
         ])
 
-# Get user input
 get_user_input()
-
-# Print tables
 print(order_details_table)
 print(product_details_table)
 print(order_status_table)
 print(refund_table)
+print("Orders in queue:", list(order_queue))
+print("Product Lookup Table:", product_lookup)
